@@ -1,69 +1,53 @@
-StandWord compares two texts by the same author recorded at two different times on this contract, and asks only whether the later one reaches fewer occasions than the earlier one. Remove the on-chain ordering, or the earlier text, and the question cannot be asked at all.
+# PriorWordBind
 
-# PriorWordBind — Intelligent Contract release candidate
+PriorWordBind is a GenLayer Intelligent Contract that records an author's position and asks one narrow semantic question about each later statement: does it preserve the occasions covered by the original position, or does it reach fewer occasions?
 
-PriorWordBind freezes an author's position on-chain, lets other wallets register reliance, and semantically classifies later statements by that same author. A `NARROWS_PRIOR` verdict permanently changes the position from `STANDING` to `WALKED_BACK`: later follow-ups fail before model execution and registered reliers may withdraw their reliance.
+## Contract logic
 
-This package is intentionally the **Intelligent Contract phase only**. Do not build or publish the StandWord frontend until the source is deployed to GenLayer StudioNet (chain ID `61999`) and both MV-1 and MV-2 in [TEST_PLAN.md](TEST_PLAN.md) pass with transaction hashes.
+1. An author calls `open_position(topic, position_text)`. The original text and its author are stored permanently.
+2. Any wallet may call `register_reliance(position_id, label)` while the position is standing.
+3. Only the original author may call `submit_followup(position_id, followup_text)`.
+4. GenLayer validators return one of two verdicts:
+   - `KEEPS_PRIOR`: the follow-up is recorded and the position remains `STANDING`.
+   - `NARROWS_PRIOR`: the position becomes permanently `WALKED_BACK`.
+5. After a walkback, new follow-ups are rejected before model execution and each registered relier may call `withdraw_reliance` once.
 
-## Release gates already run locally
+The contract has no administrator, reset, delete, payment, clock or external-web dependency.
 
-- Kill-set rubric check: `PASS`, zero overlap.
-- Unit tests: 32/32 passed.
-- Static release verifier: passed.
-- `genvm-linter`: exit code 0; seven view return-annotation warnings only.
-- StudioNet deployment, calldata estimates, MV-1/MV-2 and runtime evidence: `NOT RUN` until a deployed address and three test wallets exist.
+## Public methods
 
-## Local verification
+Write methods:
+
+- `open_position(topic, position_text)`
+- `register_reliance(position_id, relier_label)`
+- `submit_followup(position_id, followup_text)`
+- `withdraw_reliance(position_id)`
+
+Read methods:
+
+- `get_position`
+- `get_followup` / `get_followups`
+- `get_reliance` / `get_reliances`
+- `get_rubric`
+- `get_limits`
+
+## Verified deployment
+
+- Network: GenLayer StudioNet, chain ID `61999`
+- Contract: `0x7bA831F9C232169807ce9C8Dda395BBD6Ec1CD02`
+- Deploy transaction: `0x34e43220a13a4d32448253836a08234e0399a7f045d8f17c7108e670ec4e55d2`
+- Source SHA-256: `0695bb114b13f9921ee39db7a5afdf6d36e367339b258a257d404afaddbcd024`
+- Explorer: https://explorer-studio.genlayer.com/address/0x7bA831F9C232169807ce9C8Dda395BBD6Ec1CD02
+
+## Run the deterministic tests
+
+From the repository root:
 
 ```bash
-python3 PRIORWORDBIND_KILLSET_CHECK.py contracts/PriorWordBind.py
 python3 -m unittest discover -s tests -v
-python3 scripts/verify_submission.py
-python3 -m genvm_linter.cli lint contracts/PriorWordBind.py
 ```
 
-If `genvm-linter` is not installed in the active Python environment, install/use the GenLayer Studio v0.2 linter environment. A missing linter package is not a contract failure.
+Expected result: `Ran 32 tests` and `OK`.
 
-## Deploy sequence
+The deterministic suite checks authorization, validation order, permanent state transitions, reliance accounting, pagination, duplicate protection and model-call boundaries. Live consensus results and important transaction hashes are recorded in [TESTING.md](TESTING.md).
 
-1. In GenLayer Studio, select **Normal (Full Consensus)** and StudioNet `61999`.
-2. Create a new contract and paste the complete contents of `contracts/PriorWordBind.py`.
-3. Deploy. Record the address and deployment transaction in `RUNTIME_EVIDENCE.md`.
-4. With the primary wallet, call `open_position` using topic `Release audit coverage` and baseline `We will publish the audit report for every release.`
-5. Read `get_position` and copy the returned `position_id`.
-6. Run the calldata probe before the first real follow-up transaction.
-7. Execute MV-1 and MV-2 on separate positions. Stop if either pair does not produce opposite labels.
-8. Complete the 13-row runtime table; only then submit the Intelligent Contract.
-9. Freeze this exact source by SHA-256. A later source change invalidates all runtime evidence.
-
-## Calldata probe
-
-The probe uses `eth_estimateGas`, so it does not sign or broadcast a transaction. It still needs a valid sender address and an existing `STANDING` position ID because StudioNet evaluates the call against current state.
-
-```bash
-cd tools
-npm install
-CONTRACT_ADDRESS=0x... \
-FROM_ADDRESS=0x... \
-POSITION_ID=64_hex_characters \
-npm run probe
-```
-
-It creates `tools/calldata-probe-results.json`. Copy the ten observed results into `TESTING.md`; do not report a case as passed solely because its text is shorter than a guessed threshold.
-
-## Files
-
-- `contracts/PriorWordBind.py`: frozen-source candidate.
-- `LOCKED_SPEC.md`: product and security invariants.
-- `TEST_PLAN.md`: ten semantic cases, two must-verify pairs and runtime ordering.
-- `TESTING.md`: local gate results and explicit proof boundary.
-- `RUNTIME_EVIDENCE.md`: fill-in ledger for real StudioNet transactions.
-- `DEPLOYMENT_HANDOFF.md`: exact wallet-by-wallet execution guide.
-- `SOURCE_SHA256.txt`: normalized source digest.
-
-## How a reviewer can try it
-
-The workflow does not depend on shared state. A reviewer uses their own wallet to call `open_position`, gets their own content-addressed ID, and then acts as creator of that position. Reliance registration is permissionless. No admin, owner, clock, external web source, payment or reset path exists.
-
-License: MIT; see [LICENSE](LICENSE).
