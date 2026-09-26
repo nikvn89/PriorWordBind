@@ -1,0 +1,42 @@
+name: Verify intelligent contract source
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install GenVM linter
+        run: python3 -m pip install genvm-linter==0.11.0
+      - name: Rubric leak gate
+        run: python3 PRIORWORDBIND_KILLSET_CHECK.py contracts/PriorWordBind.py
+      - name: GenVM AST linter
+        run: python3 -m genvm_linter.cli lint contracts/PriorWordBind.py
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Static release and source parity verifier
+        run: python3 scripts/verify_submission.py
+
+  tooling-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
+      - name: Install pinned calldata tooling
+        working-directory: tools
+        run: npm ci
+      - name: Syntax-check tooling
+        working-directory: tools
+        run: |
+          node --check derive-position-id.mjs
+          node --check probe-calldata.mjs
